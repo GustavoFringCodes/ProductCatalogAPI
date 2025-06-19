@@ -9,23 +9,34 @@ builder.WebHost.UseUrls("http://0.0.0.0:8080");
 // Add services to the container.
 builder.Services.AddControllers();
 
-// Add Entity Framework with PostgreSQL support for production
+// Add Entity Framework with improved PostgreSQL support
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
-    var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
-        ?? builder.Configuration.GetConnectionString("DefaultConnection");
+    var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
 
-    if (!string.IsNullOrEmpty(connectionString) && connectionString.StartsWith("postgres://"))
+    if (!string.IsNullOrEmpty(connectionString))
     {
-        // Convert Render PostgreSQL URL to connection string
-        var uri = new Uri(connectionString);
-        var npgsqlConnectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath[1..]};Username={uri.UserInfo.Split(':')[0]};Password={uri.UserInfo.Split(':')[1]};SSL Mode=Require;Trust Server Certificate=true";
+        // Convert Render PostgreSQL URL to proper connection string
+        connectionString = connectionString.Replace("postgresql://", "");
+        var parts = connectionString.Split('@');
+        var userInfo = parts[0].Split(':');
+        var hostInfo = parts[1].Split('/');
+        var hostAndPort = hostInfo[0].Split(':');
+
+        var username = userInfo[0];
+        var password = userInfo[1];
+        var host = hostAndPort[0];
+        var port = hostAndPort.Length > 1 ? hostAndPort[1] : "5432";
+        var database = hostInfo[1];
+
+        var npgsqlConnectionString = $"Host={host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true";
         options.UseNpgsql(npgsqlConnectionString);
     }
     else
     {
         // Fallback to SQL Server for local development
-        options.UseSqlServer(connectionString);
+        var fallbackConnection = builder.Configuration.GetConnectionString("DefaultConnection");
+        options.UseSqlServer(fallbackConnection);
     }
 });
 
